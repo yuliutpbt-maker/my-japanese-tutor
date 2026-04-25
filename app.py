@@ -5,7 +5,7 @@ import os
 from streamlit_mic_recorder import mic_recorder
 
 # --- 1. 初始化與模型極速配置 ---
-API_KEY = "AIzaSyCc3hu6ZAIg8jGY1EUBNIBB88xYaZdNAzI" 
+API_KEY = st.secrets.get("GEMINI_API_KEY") 
 genai.configure(api_key=API_KEY)
 
 # 配置模型參數以追求最快反應速度
