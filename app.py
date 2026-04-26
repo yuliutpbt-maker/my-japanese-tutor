@@ -5,7 +5,7 @@ import os
 import time
 from streamlit_mic_recorder import mic_recorder
 
-# --- 1. API 初始化 (11點版本) ---
+# --- 1. API 初始化 (100% 還原睡前版) ---
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=API_KEY)
@@ -16,18 +16,27 @@ except Exception as e:
 
 st.set_page_config(page_title="I Japanese 練習器", layout="wide")
 
-# --- 2. Google 語音介入 (使用 st.audio 確保 100% 有聲音) ---
+# --- 2. 核心修正：使用 JS Audio 物件 (Google 自然人聲，不產生 ID 衝突) ---
 def play_google_audio(text):
-    # 這就是 2-A 簡化版的 Google 翻譯連結
+    # 使用 JavaScript 的新物件來播放，這比 HTML 標籤更穩定，不會被 Streamlit 報錯
     tts_url = f"https://translate.google.com/translate_tts?ie=UTF-8&q={text}&tl=ja&client=tw-ob"
-    # 使用 Streamlit 原生音訊組件，這比 JS 穩定，且聲音是 Google 自然人聲
-    st.audio(tts_url, format="audio/mpeg", autoplay=True)
+    js_code = f"""
+    <script>
+        (function() {{
+            var audio = new Audio('{tts_url}');
+            audio.play().catch(function(error) {{
+                console.log("播放被攔截，通常是因為需要使用者先點擊頁面:", error);
+            }});
+        }})();
+    </script>
+    """
+    st.components.v1.html(js_code, height=0)
 
 # --- 3. 狀態初始化 ---
 if 'idx' not in st.session_state:
     st.session_state.idx = 0
 
-# --- 4. 讀取教材 (Japanese_Lessons 資料夾) ---
+# --- 4. 讀取教材 (Japanese_Lessons) ---
 save_path = "Japanese_Lessons"
 
 if not os.path.exists(save_path):
@@ -50,14 +59,14 @@ else:
         for i, s in enumerate(sentences):
             if st.button(s, key=f"list_btn_{i}", type="primary" if i == idx else "secondary", use_container_width=True):
                 st.session_state.idx = i
-                # 這裡點擊後觸發 rerun，會在下方「當前練習」處自動播放
+                # 點擊後，先發聲再刷新
+                play_google_audio(s)
+                time.sleep(0.2)
                 st.rerun()
 
         st.divider()
         st.markdown(f"### 🎯 當前練習：\n#### {current_s}")
 
-        # --- 核心發音觸發 ---
-        # 只要 idx 變動或點擊重複聽，就會調用 Google TTS
         col1, col2 = st.columns(2)
         with col1:
             if st.button("🔈 重複聽這句", use_container_width=True):
@@ -66,11 +75,6 @@ else:
             if st.button("⏭️ 下一句", use_container_width=True):
                 st.session_state.idx = (idx + 1) % len(sentences)
                 st.rerun()
-
-        # 為了讓使用者選中句子後「自動播放」
-        # 我們在當前練習下方放一個自動播放的音軌（會隱藏）
-        if st.session_state.get('auto_play', True):
-             play_google_audio(current_s)
 
         # --- 6. 錄音判定區 (還原 v8 穩定邏輯) ---
         st.write("---")
