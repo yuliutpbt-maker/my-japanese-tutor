@@ -2,52 +2,50 @@ import streamlit as st
 import google.generativeai as genai
 from streamlit_mic_recorder import mic_recorder
 
-# 1. 核心初始化 (使用 1.5 Flash 追求最高穩定度)
+# --- 1. 初始化 (只用你確定能動的模型名稱) ---
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel("gemini-1.5-flash")
-except:
-    st.error("API 設定錯誤")
+    # 回歸你電腦測試成功過的唯一版本
+    model = genai.GenerativeModel("models/gemini-3.1-flash-lite-preview")
+except Exception as e:
+    st.error(f"設定錯誤: {e}")
     st.stop()
 
-# 2. 萬用語音播放 (不使用外部連結，避免 CORS 錯誤)
+st.title("日文口說測試 (基準版)")
+
+# --- 2. 語音播放 (使用最簡單的 JS，電腦版必動) ---
 def play_audio(text):
-    js_code = f"""
+    js = f"""
     <script>
         window.speechSynthesis.cancel();
-        var m = new SpeechSynthesisUtterance('{text}');
-        m.lang = 'ja-JP';
-        window.speechSynthesis.speak(m);
+        var msg = new SpeechSynthesisUtterance('{text}');
+        msg.lang = 'ja-JP';
+        window.speechSynthesis.speak(msg);
     </script>
     """
-    st.components.v1.html(js_code, height=0)
+    st.components.v1.html(js, height=0)
 
-st.title("日文練習 (穩定版)")
-
-# 3. 簡單路徑處理
-if 'sentence' not in st.session_state:
-    st.session_state.sentence = "こんにちは、元気ですか？"
-
-target_text = st.text_input("要練習的句子：", st.session_state.sentence)
+# --- 3. 測試介面 ---
+target = st.text_input("輸入日文測試：", "こんにちは")
 
 if st.button("🔈 聽發音"):
-    play_audio(target_text)
+    play_audio(target)
 
 st.divider()
 
-# 4. 錄音與分析 (極簡結構，減少數據封裝層級)
-audio = mic_recorder(start_prompt="🔴 錄音", stop_prompt="⬛ 判定", key="simple_rec")
+# --- 4. 判定功能 (最簡化的封裝) ---
+st.write("錄音並按結束進行判定：")
+audio = mic_recorder(start_prompt="🔴 錄音", stop_prompt="⬛ 結束", key="test_rec")
 
 if audio:
-    with st.spinner("分析中..."):
+    with st.spinner("Gemini 分析中..."):
         try:
-            # 這是最簡單、最不容易當機的數據格式
-            content = [
-                f"請分析這段錄音是否符合原文：『{target_text}』。請給評分與建議。",
+            # 這是最不容易出錯的傳輸方式
+            response = model.generate_content([
+                f"原文：『{target}』。請判定發音並給分。",
                 {"mime_type": "audio/wav", "data": audio['bytes']}
-            ]
-            response = model.generate_content(content)
-            st.success("分析結果：")
+            ])
+            st.success("結果回傳：")
             st.write(response.text)
         except Exception as e:
-            st.error(f"分析當機，原因：{e}")
+            st.error(f"分析失敗，錯誤碼：{e}")
