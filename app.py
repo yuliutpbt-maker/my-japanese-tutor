@@ -5,7 +5,7 @@ import os
 import time
 from streamlit_mic_recorder import mic_recorder
 
-# --- 1. API 初始化 (100% 還原) ---
+# --- 1. API 初始化 (100% 還原睡前版) ---
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=API_KEY)
@@ -16,25 +16,29 @@ except Exception as e:
 
 st.set_page_config(page_title="I Japanese 練習器", layout="wide")
 
-# --- 2. 萬用發音函數 (回歸原生 API，保證出聲) ---
+# --- 2. 核心修正：加入 iOS 空播喚醒補丁的發音函數 ---
 def play_audio(text):
-    # 使用原生 Web Speech API，這是睡前穩定版的基礎
-    # 我們加入語音篩選邏輯，試圖找出系統中最自然的日文聲音
+    # 這個版本會先發出一個無聲指令來「踢開」瀏覽器的音訊限制門
     js_code = f"""
     <script>
         (function() {{
+            // 1. 先重置所有語音
             window.speechSynthesis.cancel();
+            
+            // 2. 建立一個空的語音物件，這是一個「敲門」動作，用來解鎖 iOS 權限
+            var whisper = new SpeechSynthesisUtterance("");
+            window.speechSynthesis.speak(whisper);
+            
+            // 3. 準備真正的日文語音
             var msg = new SpeechSynthesisUtterance('{text}');
             msg.lang = 'ja-JP';
-            
-            // 語音引擎優化：嘗試抓取系統中品質較好的日文人聲
-            var voices = window.speechSynthesis.getVoices();
-            var jaVoice = voices.find(v => v.lang.includes('ja') && v.name.includes('Google'));
-            if (jaVoice) msg.voice = jaVoice;
-            
-            msg.rate = 0.85; // 稍微放慢一點，聽起來更清楚自然
+            msg.rate = 0.9;  // 稍微放慢，比較自然
             msg.pitch = 1.0;
-            window.speechSynthesis.speak(msg);
+            
+            // 4. 延遲 50 毫秒播放，確保「門」已經被踢開了
+            setTimeout(function() {{
+                window.speechSynthesis.speak(msg);
+            }}, 50);
         }})();
     </script>
     """
@@ -44,7 +48,7 @@ def play_audio(text):
 if 'idx' not in st.session_state:
     st.session_state.idx = 0
 
-# --- 4. 讀取教材 (資料夾：Japanese_Lessons) ---
+# --- 4. 讀取教材 (Japanese_Lessons) ---
 save_path = "Japanese_Lessons"
 
 if not os.path.exists(save_path):
@@ -83,7 +87,7 @@ else:
                 st.session_state.idx = (idx + 1) % len(sentences)
                 st.rerun()
 
-        # --- 6. 錄音判定區 (v8 穩定版) ---
+        # --- 6. 錄音判定區 (v8 穩定邏輯) ---
         st.write("---")
         st.markdown("#### 🎙️ 錄音判定")
         audio_record = mic_recorder(
