@@ -2,7 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 from streamlit_mic_recorder import mic_recorder
 
-# --- 1. API 初始化 ---
+# --- 1. 初始化 (維持 3.1 Flash Lite) ---
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     model = genai.GenerativeModel("models/gemini-3.1-flash-lite-preview")
@@ -10,65 +10,55 @@ except:
     st.error("API 設定錯誤")
     st.stop()
 
-st.set_page_config(page_title="日語口說極速判定", layout="wide")
+st.set_page_config(page_title="極速日語打分")
 
-# --- 2. 核心語音腳本 (電腦穩定版) ---
+# --- 2. 語音播放 (電腦穩定版) ---
 def play_audio(text):
-    js_fixed = f"""
+    js = f"""
     <script>
         window.speechSynthesis.cancel();
         var msg = new SpeechSynthesisUtterance('{text}');
         msg.lang = 'ja-JP';
-        msg.rate = 0.85;
         window.speechSynthesis.speak(msg);
     </script>
     """
-    st.components.v1.html(js_fixed, height=0)
+    st.components.v1.html(js, height=0)
 
-st.title("N3 日語極速練習")
-
-# N3 測試長句
+# --- 3. 介面 ---
 n3_sentence = "最近は仕事が忙しくて、ゆっくり休む時間がなくて困っています。"
-target = st.text_area("練習句子：", n3_sentence, height=80)
+target = st.text_area("練習句子：", n3_sentence, height=70)
 
 if st.button("🔈 聽發音"):
     play_audio(target)
 
 st.divider()
 
-# --- 3. 極速判定邏輯 ---
-st.write("🎙️ 錄音並立即評分：")
-audio = mic_recorder(start_prompt="🔴 錄音", stop_prompt="⬛ 停止", key="fast_rec")
+# --- 4. 極速判定 (只看分數) ---
+st.write("🎙️ 錄音評分：")
+audio = mic_recorder(start_prompt="🔴 錄音", stop_prompt="⬛ 停止", key="ultra_fast_rec")
 
 if audio:
-    with st.spinner("評分中..."):
-        try:
-            # 這是關鍵：強制 Gemini 只輸出核心資訊，減少生成時間
-            fast_prompt = f"""
-            原文：『{target}』
-            請僅針對錄音回傳：
-            1. SCORE: 0-100
-            2. 發音短評：(20字以內)
-            3. 語調短評：(20字以內)
-            """
+    # 使用佔位符，讓分數直接蓋過進度條
+    status = st.empty()
+    status.write("⚡ 評分中...")
+    
+    try:
+        # 強制只輸出分數，這會讓 Gemini 反應極快
+        fast_prompt = f"原文：『{target}』。請聽錄音，只回傳一個數字分數 (0-100)，不要任何文字。"
+        
+        response = model.generate_content([
+            fast_prompt,
+            {"mime_type": "audio/wav", "data": audio['bytes']}
+        ])
+        
+        status.empty()
+        score_text = response.text.strip()
+        
+        # 大字顯示分數
+        st.markdown(f"<h1 style='text-align: center; color: #1E90FF;'>{score_text} 分</h1>", unsafe_allow_html=True)
+        
+        if score_text.isdigit() and int(score_text) > 80:
+            st.balloons()
             
-            response = model.generate_content([
-                fast_prompt,
-                {"mime_type": "audio/wav", "data": audio['bytes']}
-            ])
-            
-            # 顯示結果
-            st.subheader("📊 判定結果")
-            st.info(response.text)
-            
-            if "SCORE" in response.text:
-                st.balloons()
-                
-        except Exception as e:
-            st.error(f"分析失敗：{e}")
-
-# --- 📱 手機沒聲音的最終提醒 ---
-# 因為你手機沒有實體開關，若電腦有聲手機沒聲，請檢查：
-# 1. 滑下控制中心 (右上角拉下)
-# 2. 確認「鈴鐺圖示」不是紅色的（如果是紅色，網頁發音會被封鎖）
-# 3. 點擊「聽發音」按鈕來解鎖瀏覽器權限
+    except Exception as e:
+        status.error(f"錯誤：{e}")
