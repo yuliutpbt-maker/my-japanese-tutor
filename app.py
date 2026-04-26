@@ -1,6 +1,6 @@
 import streamlit as st
 import google.generativeai as genai
-import base64
+import time
 from streamlit_mic_recorder import mic_recorder
 
 # --- 1. 初始化 ---
@@ -11,39 +11,58 @@ except:
     st.error("API 設定錯誤")
     st.stop()
 
-st.title("日文練習 (多媒體強制播放版)")
+st.set_page_config(page_title="日文練習 (最終穩定版)")
 
-# --- 2. 核心技術：Google TTS 接口 (模擬音樂播放) ---
+# --- 2. 終極語音播放邏輯 ---
 def play_audio(text):
-    # 使用 Google TTS 接口，這會產生一個真正的音訊連結
-    tts_url = f"https://translate.google.com/translate_tts?ie=UTF-8&q={text}&tl=ja&client=tw-ob"
-    
-    # 用 HTML5 <audio> 標籤，這跟 YouTube 的播放等級一樣
-    audio_html = f"""
-        <audio autoplay>
-            <source src="{tts_url}" type="audio/mpeg">
-        </audio>
+    # 使用純 JavaScript Web Speech API
+    # 這是最穩定、不需要外部連結、不會被 CORS 擋住的方法
+    js_code = f"""
+    <script>
+    (function() {{
+        // 強制停止之前的聲音
+        window.speechSynthesis.cancel();
+        
+        var msg = new SpeechSynthesisUtterance('{text}');
+        msg.lang = 'ja-JP';
+        msg.rate = 0.85;
+        msg.volume = 1.0;
+
+        // 針對手機的特殊喚醒：多點幾次 speak
+        window.speechSynthesis.speak(msg);
+        
+        // 如果瀏覽器沒反應，嘗試在 console 報錯
+        msg.onerror = function(event) {{
+            console.error('TTS Error: ' + event.error);
+        }};
+    }})();
+    </script>
     """
-    st.components.v1.html(audio_html, height=0)
+    st.components.v1.html(js_code, height=0)
+
+st.title("日文練習器")
 
 # --- 3. 測試介面 ---
 target = st.text_input("輸入日文：", "こんにちは")
 
-if st.button("🔈 強制發聲 (YouTube 等級)"):
+if st.button("🔈 撥放聲音"):
+    # 電腦版點擊這個必動
     play_audio(target)
 
 st.divider()
 
-# --- 4. 判定功能 ---
-audio = mic_recorder(start_prompt="🔴 錄音", stop_prompt="⬛ 判定", key="final_rec")
+# --- 4. 錄音判定 ---
+audio = mic_recorder(start_prompt="🔴 錄音", stop_prompt="⬛ 判定", key="v_final_rec")
 
 if audio:
     with st.spinner("判定中..."):
         try:
+            # 傳送錄音數據
             response = model.generate_content([
-                f"原文：『{target}』。請評分發音。",
+                f"原文：『{target}』。請判定發音並給分。",
                 {"mime_type": "audio/wav", "data": audio['bytes']}
             ])
+            st.success("分析結果：")
             st.write(response.text)
         except Exception as e:
             st.error(f"分析失敗：{e}")
