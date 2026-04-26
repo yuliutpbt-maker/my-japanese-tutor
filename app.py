@@ -1,15 +1,17 @@
 import streamlit as st
 import json
+import os
 
-# --- 1. 強效發音組件 (確保重複點擊有效) ---
+# --- 1. 強效發音組件 (解決重複點擊與手機鎖定) ---
 def play_audio(text):
+    # 加入 cancel() 與 50ms 延遲，確保每次點擊都能重新觸發發聲
     js_code = f"""
     <script>
         (function() {{
             window.speechSynthesis.cancel();
             var msg = new SpeechSynthesisUtterance('{text}');
             msg.lang = 'ja-JP';
-            msg.rate = 0.85;
+            msg.rate = 0.85; 
             setTimeout(function() {{
                 window.speechSynthesis.speak(msg);
             }}, 50);
@@ -18,40 +20,47 @@ def play_audio(text):
     """
     st.components.v1.html(js_code, height=0)
 
-st.title("📖 日文教材練習 (GitHub JSON 版)")
+st.title("📖 日文教材練習系統")
+st.caption("同步 GitHub lessons/ 資料夾內容")
 
-# --- 2. 讀取 GitHub 上的 lessons.json ---
-# 這裡維持你原本讀取檔案的邏輯
-try:
-    with open('lessons.json', 'r', encoding='utf-8') as f:
-        lessons_data = json.load(f)
+# --- 2. 讀取 lessons/ 資料夾邏輯 ---
+lesson_folder = "lessons"
+
+if os.path.exists(lesson_folder):
+    # 抓取資料夾內所有 .json 檔
+    json_files = [f for f in os.listdir(lesson_folder) if f.endswith('.json')]
     
-    # 讓使用者選擇要練習哪個 Lesson
-    lesson_names = list(lessons_data.keys())
-    selected_lesson = st.selectbox("請選擇教材章節：", lesson_names)
-    
-    # 取得該章節的句子清單
-    sentences = lessons_data[selected_lesson]
+    if json_files:
+        selected_file = st.selectbox("選擇教材章節：", json_files)
+        
+        # 讀取選中的 JSON 檔案
+        file_path = os.path.join(lesson_folder, selected_file)
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            
+            # 假設 JSON 結構是：{"title": "...", "sentences": ["...", "..."]}
+            # 或者直接是一個 list。我們這裡相容兩種情況：
+            sentences = data.get("sentences", data) if isinstance(data, dict) else data
 
-    st.write(f"### 目前進度：{selected_lesson}")
-    st.divider()
+            st.write(f"### 目前章節：{selected_file.replace('.json', '')}")
+            st.divider()
 
-    # --- 3. 逐句顯示與播放 (優化版) ---
-    for i, s in enumerate(sentences):
-        with st.container():
-            col1, col2 = st.columns([5, 1])
-            with col1:
-                # 解決字體太小問題，清楚顯示長句子
-                st.markdown(f"#### {i+1}. {s}")
-            with col2:
-                if st.button(f"🔈 播放", key=f"btn_{selected_lesson}_{i}"):
-                    play_audio(s)
-            st.write("") 
-
-except FileNotFoundError:
-    st.error("找不到 lessons.json 檔案，請確認檔案已上傳至 GitHub 倉庫。")
-except Exception as e:
-    st.error(f"讀取教材時發生錯誤：{e}")
+            # --- 3. 逐句顯示 (大字體、防消失、重複播放) ---
+            for i, s in enumerate(sentences):
+                with st.container():
+                    col1, col2 = st.columns([5, 1])
+                    with col1:
+                        # 使用 H4 級別大字體，方便看著字練習
+                        st.markdown(f"#### {i+1}. {s}")
+                    with col2:
+                        # 確保每個按鈕有唯一的 key
+                        if st.button(f"🔈 播放", key=f"btn_{selected_file}_{i}"):
+                            play_audio(s)
+                    st.write("") # 增加句子間的間距
+    else:
+        st.warning("lessons/ 資料夾內沒有 JSON 檔案。")
+else:
+    st.error(f"找不到 '{lesson_folder}' 資料夾，請確認 GitHub 結構正確。")
 
 st.divider()
-st.caption("提示：若手機沒聲音，請先確認「靜音模式（紅鈴鐺）」已關閉，並點擊按鈕來啟動聲音。")
+st.info("提示：若手機無聲，請確認控制中心『紅鈴鐺』已關閉。點擊播放鍵後，手機瀏覽器即可解鎖聲音通道。")
