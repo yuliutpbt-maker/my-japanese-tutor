@@ -16,42 +16,29 @@ except Exception as e:
 
 st.set_page_config(page_title="I Japanese 練習器", layout="wide")
 
-# --- 2. 仿真 MDN 測試頁面的發音函數 ---
-def play_audio(text):
+# --- 2. 狀態初始化 ---
+if 'idx' not in st.session_state:
+    st.session_state.idx = 0
+if 'speak_text' not in st.session_state:
+    st.session_state.speak_text = ""
+
+# --- 3. 終極發音補丁：直接在主頁面輸出 JS ---
+# 只要 speak_text 有變動，這段 JS 就會重新執行一次
+if st.session_state.speak_text:
     js_code = f"""
     <script>
         (function() {{
             window.speechSynthesis.cancel();
-            
-            // 模仿 MDN 成功的關鍵：先執行一次 getVoices
-            var voices = window.speechSynthesis.getVoices();
-            
-            var msg = new SpeechSynthesisUtterance('{text}');
+            var msg = new SpeechSynthesisUtterance("{st.session_state.speak_text}");
             msg.lang = 'ja-JP';
             msg.rate = 0.9;
-            
-            // iOS 必須在 user gesture 裡面執行，且有時候需要微小的延遲
-            if (speechSynthesis.speaking) {{
-                window.speechSynthesis.cancel();
-            }}
-            
-            // 嘗試播放
             window.speechSynthesis.speak(msg);
-            
-            // 補丁：如果 0.5 秒後還沒在說話，再補一槍
-            setTimeout(function() {{
-                if (!window.speechSynthesis.speaking) {{
-                    window.speechSynthesis.speak(msg);
-                }}
-            }}, 500);
         }})();
     </script>
     """
     st.components.v1.html(js_code, height=0)
-
-# --- 3. 狀態初始化 ---
-if 'idx' not in st.session_state:
-    st.session_state.idx = 0
+    # 執行完後清空，避免重複播放
+    st.session_state.speak_text = ""
 
 # --- 4. 讀取教材 ---
 save_path = "Japanese_Lessons"
@@ -76,8 +63,7 @@ else:
         for i, s in enumerate(sentences):
             if st.button(s, key=f"list_btn_{i}", type="primary" if i == idx else "secondary", use_container_width=True):
                 st.session_state.idx = i
-                play_audio(s) 
-                time.sleep(0.1)
+                st.session_state.speak_text = s # 觸發發音
                 st.rerun()
 
         st.divider()
@@ -86,7 +72,8 @@ else:
         col1, col2 = st.columns(2)
         with col1:
             if st.button("🔈 重複聽這句", use_container_width=True):
-                play_audio(current_s)
+                st.session_state.speak_text = current_s # 觸發發音
+                st.rerun()
         with col2:
             if st.button("⏭️ 下一句", use_container_width=True):
                 st.session_state.idx = (idx + 1) % len(sentences)
@@ -108,7 +95,6 @@ else:
                     instruction = f"原文『{current_s}』。請給分 SCORE:0-100 與建議。"
                     response = model.generate_content([instruction, audio_blob])
                     st.info(response.text)
-                    if "SCORE" in response.text:
-                        st.balloons()
                 except Exception as e:
                     st.error(f"分析失敗：{e}")
+                    
