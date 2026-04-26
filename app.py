@@ -10,20 +10,10 @@ except:
     st.error("API 設定錯誤")
     st.stop()
 
-st.set_page_config(page_title="N3 日語練習 (穩定版)")
+st.set_page_config(page_title="日語口說極速判定", layout="wide")
 
-# --- 2. 核心語音腳本 (電腦恢復版) ---
+# --- 2. 核心語音腳本 (電腦穩定版) ---
 def play_audio(text):
-    js_code = f"""
-    <script>
-        window.speechSynthesis.cancel();
-        var msg = new SynthesisUtterance('{text}');
-        msg.lang = 'ja-JP';
-        msg.rate = 0.85; // 稍微放慢一點，適合 N3 練習
-        window.speechSynthesis.speak(msg);
-    </script>
-    """
-    # 這裡修正一個剛才的小拼寫錯誤，確保 100% 執行
     js_fixed = f"""
     <script>
         window.speechSynthesis.cancel();
@@ -35,38 +25,50 @@ def play_audio(text):
     """
     st.components.v1.html(js_fixed, height=0)
 
-st.title("N3 日語口說挑戰")
+st.title("N3 日語極速練習")
 
-# --- 3. N3 級別測試長句 ---
-# 這句話包含：雖然...但是... (逆接)、打算 (意志)、漢字較多
+# N3 測試長句
 n3_sentence = "最近は仕事が忙しくて、ゆっくり休む時間がなくて困っています。"
-
-target = st.text_area("練習句子 (N3)：", n3_sentence, height=100)
+target = st.text_area("練習句子：", n3_sentence, height=80)
 
 if st.button("🔈 聽發音"):
     play_audio(target)
 
 st.divider()
 
-# --- 4. 判定功能 ---
-st.write("🎙️ 請朗讀上方句子：")
-audio = mic_recorder(start_prompt="🔴 開始錄音", stop_prompt="⬛ 結束並判定", key="n3_test_rec")
+# --- 3. 極速判定邏輯 ---
+st.write("🎙️ 錄音並立即評分：")
+audio = mic_recorder(start_prompt="🔴 錄音", stop_prompt="⬛ 停止", key="fast_rec")
 
 if audio:
-    with st.spinner("Gemini 正在精細分析您的發音..."):
+    with st.spinner("評分中..."):
         try:
-            # 強化 Prompt，要求針對 N3 語調給建議
-            prompt = f"""
+            # 這是關鍵：強制 Gemini 只輸出核心資訊，減少生成時間
+            fast_prompt = f"""
             原文：『{target}』
-            請聽錄音並比對。
-            1. 給出總分 SCORE:0-100
-            2. 針對「漢字讀音」與「語調轉折」給出詳細建議 ADVICE。
+            請僅針對錄音回傳：
+            1. SCORE: 0-100
+            2. 發音短評：(20字以內)
+            3. 語調短評：(20字以內)
             """
+            
             response = model.generate_content([
-                prompt,
+                fast_prompt,
                 {"mime_type": "audio/wav", "data": audio['bytes']}
             ])
-            st.success("📊 分析結果")
-            st.write(response.text)
+            
+            # 顯示結果
+            st.subheader("📊 判定結果")
+            st.info(response.text)
+            
+            if "SCORE" in response.text:
+                st.balloons()
+                
         except Exception as e:
             st.error(f"分析失敗：{e}")
+
+# --- 📱 手機沒聲音的最終提醒 ---
+# 因為你手機沒有實體開關，若電腦有聲手機沒聲，請檢查：
+# 1. 滑下控制中心 (右上角拉下)
+# 2. 確認「鈴鐺圖示」不是紅色的（如果是紅色，網頁發音會被封鎖）
+# 3. 點擊「聽發音」按鈕來解鎖瀏覽器權限
