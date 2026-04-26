@@ -5,7 +5,7 @@ import os
 import time
 from streamlit_mic_recorder import mic_recorder
 
-# --- 1. API 初始化 (100% 還原睡前版) ---
+# --- 1. API 初始化 ---
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=API_KEY)
@@ -16,29 +16,34 @@ except Exception as e:
 
 st.set_page_config(page_title="I Japanese 練習器", layout="wide")
 
-# --- 2. 核心修正：加入 iOS 空播喚醒補丁的發音函數 ---
+# --- 2. 仿真 MDN 測試頁面的發音函數 ---
 def play_audio(text):
-    # 這個版本會先發出一個無聲指令來「踢開」瀏覽器的音訊限制門
     js_code = f"""
     <script>
         (function() {{
-            // 1. 先重置所有語音
             window.speechSynthesis.cancel();
             
-            // 2. 建立一個空的語音物件，這是一個「敲門」動作，用來解鎖 iOS 權限
-            var whisper = new SpeechSynthesisUtterance("");
-            window.speechSynthesis.speak(whisper);
+            // 模仿 MDN 成功的關鍵：先執行一次 getVoices
+            var voices = window.speechSynthesis.getVoices();
             
-            // 3. 準備真正的日文語音
             var msg = new SpeechSynthesisUtterance('{text}');
             msg.lang = 'ja-JP';
-            msg.rate = 0.9;  // 稍微放慢，比較自然
-            msg.pitch = 1.0;
+            msg.rate = 0.9;
             
-            // 4. 延遲 50 毫秒播放，確保「門」已經被踢開了
+            // iOS 必須在 user gesture 裡面執行，且有時候需要微小的延遲
+            if (speechSynthesis.speaking) {{
+                window.speechSynthesis.cancel();
+            }}
+            
+            // 嘗試播放
+            window.speechSynthesis.speak(msg);
+            
+            // 補丁：如果 0.5 秒後還沒在說話，再補一槍
             setTimeout(function() {{
-                window.speechSynthesis.speak(msg);
-            }}, 50);
+                if (!window.speechSynthesis.speaking) {{
+                    window.speechSynthesis.speak(msg);
+                }}
+            }}, 500);
         }})();
     </script>
     """
@@ -48,7 +53,7 @@ def play_audio(text):
 if 'idx' not in st.session_state:
     st.session_state.idx = 0
 
-# --- 4. 讀取教材 (Japanese_Lessons) ---
+# --- 4. 讀取教材 ---
 save_path = "Japanese_Lessons"
 
 if not os.path.exists(save_path):
@@ -71,7 +76,7 @@ else:
         for i, s in enumerate(sentences):
             if st.button(s, key=f"list_btn_{i}", type="primary" if i == idx else "secondary", use_container_width=True):
                 st.session_state.idx = i
-                play_audio(s) # 點擊全文直接發音
+                play_audio(s) 
                 time.sleep(0.1)
                 st.rerun()
 
@@ -87,7 +92,7 @@ else:
                 st.session_state.idx = (idx + 1) % len(sentences)
                 st.rerun()
 
-        # --- 6. 錄音判定區 (v8 穩定邏輯) ---
+        # --- 6. 錄音判定區 ---
         st.write("---")
         st.markdown("#### 🎙️ 錄音判定")
         audio_record = mic_recorder(
