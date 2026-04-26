@@ -2,18 +2,17 @@ import streamlit as st
 import google.generativeai as genai
 from streamlit_mic_recorder import mic_recorder
 
-# --- 1. 初始化 (維持 3.1 Flash Lite) ---
+# --- 1. 初始化 ---
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    # 確保使用 flash-lite，這是目前反應最快的模型
     model = genai.GenerativeModel("models/gemini-3.1-flash-lite-preview")
 except:
-    st.error("API 設定錯誤")
+    st.error("API 初始化失敗")
     st.stop()
 
-st.set_page_config(page_title="極速打分")
+st.set_page_config(page_title="日語判定器")
 
-# --- 2. 語音播放 ---
+# --- 2. 語音播放 (維持電腦版有聲) ---
 def play_audio(text):
     js = f"""
     <script>
@@ -25,7 +24,9 @@ def play_audio(text):
     """
     st.components.v1.html(js, height=0)
 
-# --- 3. 介面 ---
+st.title("日文練習 (穩定極速)")
+
+# N3 測試句
 target = st.text_input("練習句：", "最近は仕事が忙しくて、ゆっくり休む時間がなくて困っています。")
 
 if st.button("🔈 聽發音"):
@@ -33,26 +34,33 @@ if st.button("🔈 聽發音"):
 
 st.divider()
 
-# --- 4. 針對 10 秒延遲的優化判定 ---
-st.write("🎙️ 錄音評分：")
-# 限制錄音長度可以減少上傳時間
-audio = mic_recorder(start_prompt="🔴 錄音", stop_prompt="⬛ 停止", key="fast_v1")
+# --- 3. 判定功能 ---
+audio = mic_recorder(
+    start_prompt="🔴 開始錄音", 
+    stop_prompt="⬛ 停止並評分", 
+    key="stable_fast_v2"
+)
 
 if audio:
-    # 立即變更畫面狀態，減少「等死」的感覺
-    container = st.empty()
-    container.markdown("### ⚡ 正在計算分數...")
+    # 使用 placeholder 顯示狀態
+    res_area = st.empty()
+    res_area.write("⏳ 正在傳輸音檔並分析...")
     
     try:
-        # 強制 Gemini 進入「直接輸出」模式
-        # 加上 "Result only" 的指令能減少 AI 內部的 Reasoning 時間
+        # 稍微完整的 Prompt 其實比極短的 Prompt 更不容易出錯
+        prompt = f"請聽錄音並比對原文：『{target}』。請直接給出一個 0 到 100 的數字分數，並在後面加一個短評。"
+        
         response = model.generate_content([
-            f"Result only. Score 0-100 for pronunciation of: {target}",
+            prompt,
             {"mime_type": "audio/wav", "data": audio['bytes']}
-        ], generation_config={"max_output_tokens": 5}) # 限制輸出字數也能縮短時間
+        ])
         
-        score = response.text.strip()
-        container.markdown(f"<h1 style='text-align: center; font-size: 80px; color: #1E90FF;'>{score}</h1>", unsafe_allow_html=True)
+        res_area.empty()
+        st.subheader("📊 判定結果")
+        st.write(response.text)
         
+        if "100" in response.text or "9" in response.text: # 簡單判定高分
+            st.balloons()
+            
     except Exception as e:
-        container.error(f"連線超時：{e}")
+        res_area.error(f"發生錯誤：{e}")
