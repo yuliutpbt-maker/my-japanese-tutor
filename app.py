@@ -3,7 +3,7 @@ import google.generativeai as genai
 import time
 from streamlit_mic_recorder import mic_recorder
 
-# --- 1. 初始化 ---
+# --- 1. API 初始化 ---
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     model = genai.GenerativeModel("models/gemini-3.1-flash-lite-preview")
@@ -11,58 +11,52 @@ except:
     st.error("API 設定錯誤")
     st.stop()
 
-st.set_page_config(page_title="日文練習 (最終穩定版)")
+st.set_page_config(page_title="日文練習 (手機音效修復)")
 
-# --- 2. 終極語音播放邏輯 ---
+# --- 2. 終極發聲腳本 ---
 def play_audio(text):
-    # 使用純 JavaScript Web Speech API
-    # 這是最穩定、不需要外部連結、不會被 CORS 擋住的方法
+    # 這是目前對手機最友善的寫法：先 Cancel 再 Speak，並包裝在一個函數中
     js_code = f"""
     <script>
     (function() {{
-        // 強制停止之前的聲音
-        window.speechSynthesis.cancel();
-        
+        window.speechSynthesis.cancel(); 
         var msg = new SpeechSynthesisUtterance('{text}');
         msg.lang = 'ja-JP';
-        msg.rate = 0.85;
-        msg.volume = 1.0;
-
-        // 針對手機的特殊喚醒：多點幾次 speak
-        window.speechSynthesis.speak(msg);
+        msg.rate = 0.9;
         
-        // 如果瀏覽器沒反應，嘗試在 console 報錯
-        msg.onerror = function(event) {{
-            console.error('TTS Error: ' + event.error);
-        }};
+        // 針對手機：必須由使用者點擊後觸發，且有時需要重複呼叫
+        window.speechSynthesis.speak(msg);
     }})();
     </script>
     """
     st.components.v1.html(js_code, height=0)
 
-st.title("日文練習器")
+st.title("日文口說練習")
 
 # --- 3. 測試介面 ---
 target = st.text_input("輸入日文：", "こんにちは")
 
-if st.button("🔈 撥放聲音"):
-    # 電腦版點擊這個必動
+# 手機版重點：請點擊這個按鈕來聽聲音
+if st.button("🔈 撥放聲音 (手機請點此)"):
     play_audio(target)
 
 st.divider()
 
 # --- 4. 錄音判定 ---
-audio = mic_recorder(start_prompt="🔴 錄音", stop_prompt="⬛ 判定", key="v_final_rec")
+audio = mic_recorder(
+    start_prompt="🔴 錄音", 
+    stop_prompt="⬛ 判定", 
+    key="mobile_fix_rec"
+)
 
 if audio:
     with st.spinner("判定中..."):
         try:
-            # 傳送錄音數據
             response = model.generate_content([
                 f"原文：『{target}』。請判定發音並給分。",
                 {"mime_type": "audio/wav", "data": audio['bytes']}
             ])
-            st.success("分析結果：")
+            st.success("結果回傳：")
             st.write(response.text)
         except Exception as e:
             st.error(f"分析失敗：{e}")
